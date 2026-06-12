@@ -1,0 +1,265 @@
+install.packages("patchwork")
+# 使用清华镜像
+options(repos = c(CRAN = "https://mirrors.tuna.tsinghua.edu.cn/CRAN/"))
+# 然后安装
+install.packages("survminer")
+install.packages("here")
+install.packages("tidyverse")
+install.packages("haven")
+
+library(dplyr)
+library(tidyverse)
+library(r2rtf)
+library(haven)
+#作图使用
+library(ggplot2)
+library(patchwork)
+library(survival)
+library(survminer)
+library(here)
+
+adakitte <- read_sas(file.path(here::here("rstudio/Data"),"adakitte.sas7bdat"))
+adtte0 <- adakitte |> 
+  filter(PARAM=="eGFR - Time to first Grade 1(at least Grade 1) in Month (Treatment)") |> 
+  select(USUBJID,TRTP,PARAMCD,STARTDT,ADT,AVAL,CNSR)
+
+adtte0 <- adtte0 |> 
+  mutate(TRTP = factor(TRTP, levels = c("Placebo","Mindaptin Low Dose","Mindaptin High Dose")))
+
+# 查看TRTP的水平和顺序
+unique(adtte0$TRTP)
+levels(adtte0$TRTP)
+table(adtte0$TRTP)
+
+fit <- survfit(Surv(AVAL, 1 - CNSR) ~ TRTP, data = adtte0)
+# 在绘图之前修改 fit 对象的 strata 名称
+names(fit$strata) <- gsub("TRTP=", "", names(fit$strata))
+
+# 设置统一的x轴范围
+x_limits <- c(0, max(adtte0$AVAL, na.rm = TRUE))
+x_breaks <- seq(0, ceiling(max(adtte0$AVAL, na.rm = TRUE)), by = 2)
+
+# 自定义颜色
+custom_colors <- c("#619CFF", "#00BA38", "#F8766D")  # 红、蓝、绿
+
+p <- ggsurvplot(
+  fit,
+  data = adtte0,
+  fun = "event",
+  conf.int = FALSE,
+  #pval = TRUE,
+  risk.table = TRUE,
+  cumevents = TRUE,
+  tables.height = 0.25,
+  risk.table.height = 0.15,
+  cumevents.height = 0.15,
+  legend.title = "Treatment",
+  xlab = "Time from first dose (months)",
+  ylab = " ",
+  title = " ",
+  palette = custom_colors,
+  ggtheme = theme_bw(),
+  tables.theme = theme_cleantable(),
+  fontsize = 4,  # 调整字体大小以改善对齐
+  tables.y.text = TRUE,  # 显示表格Y轴文本
+  legend = "bottom"
+)
+# 删除主图背景网格线并设置纵轴刻度
+p$plot <- p$plot + 
+  ylab("Cumulative Percentage (%) of
+eGFR >=25% Decrease from
+Last Known Value on Treatment") +
+  scale_x_continuous(
+    breaks = x_breaks,
+    limits = x_limits
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 0.15, by = 0.05),
+    labels = sprintf("%.2f", seq(0, 0.15, by = 0.05)),
+    limits = c(0, 0.2)
+  ) +
+  theme(
+    axis.text.y = element_text(margin = margin(r = 0)),
+    axis.title.y = element_text(margin = margin(r = 0)),
+    plot.margin = margin(5, 10, 5, 10, "pt"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    panel.border = element_blank(),  # 移除整个边框
+    axis.line.x = element_line(colour = "black", linewidth = 0.5),  # 保留x轴线
+    axis.line.y = element_line(colour = "black", linewidth = 0.5)   # 保留y轴线
+#   panel.border = element_rect(colour = "black", fill = NA, linewidth = 1)
+  )
+# 删除风险表和累积事件表的背景框线
+p$table <- p$table + 
+  labs(title = "Number of Subjects at Risk") +  # 修改标题
+  scale_x_continuous(
+    breaks = x_breaks,
+    limits = x_limits
+  ) +
+  theme(
+    plot.margin = margin(5, 10, 5, 42, "pt"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5),
+    axis.line = element_blank()
+  )
+
+p$cumevents <- p$cumevents + 
+  labs(title = "Cumulative Number of Subjects with Event") +  # 修改标题
+  scale_x_continuous(
+    breaks = x_breaks,
+    limits = x_limits
+  ) +
+  theme(
+    plot.margin = margin(5, 10, 5, 42, "pt"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5),
+    axis.line = element_blank()
+  )
+
+# 提取置信区间数据 - 找最接近的时间点
+time_points <- c(2, 4, 6)
+surv_summary <- surv_summary(fit, data = adtte0)
+
+ci_data <- do.call(rbind, lapply(time_points, function(tp) {
+  surv_summary |>
+    group_by(strata) |>
+    mutate(time_diff = abs(time - tp)) |>
+    filter(time_diff == min(time_diff)) |>
+    slice(1) |>
+    mutate(target_time = tp) |>
+    ungroup()
+})) |>
+  mutate(
+    cumulative = 1 - surv,
+    lower_ci = 1 - upper,
+    upper_ci = 1 - lower
+  )
+
+# 在主图上添加置信区间标记
+p$plot <- p$plot +
+  geom_errorbar(
+    data = ci_data,
+    aes(x = target_time, ymin = lower_ci, ymax = upper_ci, color = strata),
+    width = 0.2,
+    linewidth = 0.8,
+    show.legend = FALSE
+  )
+
+# 为风险表添加分组颜色 - 修改文本图层
+p$table$layers[[1]]$aes_params$colour <- custom_colors[as.numeric(factor(p$data.survtable$strata))]
+
+# 为累积事件表添加分组颜色 - 修改文本图层  
+p$cumevents$layers[[1]]$aes_params$colour <- custom_colors[as.numeric(factor(p$data.survtable$strata))]
+
+print(p)
+
+png("f_km_YHY.png", width = 297, height = 210, units = "mm", res = 300)
+print(p)
+dev.off()
+
+
+#######################################
+#一些解释
+# 查看主图有多少个图层
+cat("主图的图层数量:", length(p$plot$layers), "\n\n")
+# 查看每个图层的类型
+for (i in 1:length(p$plot$layers)) {
+  layer_class <- class(p$plot$layers[[i]]$geom)[1]
+  cat("图层", i, ":", layer_class, "\n")
+}
+# 查看每个图层的详细信息
+cat("\n=== 图层详细信息 ===\n")
+for (i in 1:length(p$plot$layers)) {
+  cat("\n图层", i, ":\n")
+  cat("  几何对象:", class(p$plot$layers[[i]]$geom)[1], "\n")
+  cat("  统计对象:", class(p$plot$layers[[i]]$stat)[1], "\n")
+  cat("  数据行数:", nrow(p$plot$layers[[i]]$data), "\n")
+}
+# 图层的来源分析：
+
+# 1. 图层 1 (GeomStep) - 生存曲线
+#    由 ggsurvplot() 自动创建，绘制阶梯线图
+
+# 2. 图层 2 (GeomBlank) - 占位图层
+#    由 ggsurvplot() 自动创建，用于布局调整
+
+# 3. 图层 3 (GeomPoint) - 删失点标记
+#    由 ggsurvplot() 中的 censor 参数创建
+#    标记删失的观测点
+
+# 4. 图层 4 (GeomErrorbar) - 置信区间误差条
+#    这是您后来手动添加的：
+#    p$plot + geom_errorbar(...)
+
+# ggsurvplot 内部创建了多个图层
+# 当您调用 ggsurvplot() 时，它自动添加：
+# - geom_step() 绘制生存曲线
+# - geom_blank() 用于布局
+# - geom_point() 如果有删失点
+
+# 然后您手动添加了：
+# - geom_errorbar() 添加置信区间标记
+
+# 每个 geom_*() 调用 = 一个新图层
+
+# 查看在险图有多少个图层
+cat("在险的图层数量:", length(p$table$layers), "\n\n")
+# 查看每个图层的类型
+for (i in 1:length(p$table$layers)) {
+  layer_class <- class(p$table$layers[[i]]$geom)[1]
+  cat("图层", i, ":", layer_class, "\n")
+}
+# 查看每个图层的详细信息
+cat("\n=== 图层详细信息 ===\n")
+for (i in 1:length(p$table$layers)) {
+  cat("\n图层", i, ":\n")
+  cat("  几何对象:", class(p$table$layers[[i]]$geom)[1], "\n")
+  cat("  统计对象:", class(p$table$layers[[i]]$stat)[1], "\n")
+  cat("  数据行数:", nrow(p$table$layers[[i]]$data), "\n")
+}
+
+# 查看图层1的完整结构
+str(p$table$layers[[1]], max.level = 1)
+# 查看更深层次的结构（2层）
+str(p$table$layers[[1]], max.level = 2)
+
+xx <- p$table$layers[[1]]$aes_params
+
+# 创建一个函数来详细检查图层
+inspect_layer <- function(layer) {
+  cat("=== 图层详细参数 ===\n\n")
+  
+  cat("1. 几何对象类型:\n")
+  print(class(layer$geom))
+  
+  cat("\n2. 美学参数 (aes_params):\n")
+  print(layer$aes_params)
+  
+  cat("\n3. 美学映射 (mapping):\n")
+  print(layer$mapping)
+  
+  cat("\n4. 几何对象参数 (geom_params):\n")
+  print(layer$geom_params)
+  
+  cat("\n5. 统计参数 (stat_params):\n")
+  print(layer$stat_params)
+  
+  cat("\n6. 默认美学 (default_aes):\n")
+  print(layer$geom$default_aes)
+  
+  cat("\n7. 数据维度:\n")
+  print(dim(layer$data))
+  
+  cat("\n8. 数据预览:\n")
+  print(head(layer$data))
+}
+
+# 使用函数检查第1个图层
+inspect_layer(p$table$layers[[1]])
+
+ptabledata <- p$table$data
