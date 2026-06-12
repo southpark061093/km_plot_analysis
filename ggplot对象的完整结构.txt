@@ -1,0 +1,71 @@
+ggplot_object
+  ├── data (数据源)
+  │     └── 原始数据框
+  │
+  ├── mapping (全局美学映射)
+  │     └── aes() 定义的映射关系
+  │
+  ├── layers (图层列表) - 控制"画什么"
+  │     └── [[1]], [[2]], ... (每个图层)
+  │           ├── geom (几何对象)
+  │           │     ├── default_aes (默认美学)
+  │           │     ├── required_aes (必需美学)
+  │           │     └── optional_aes (可选美学)
+  │           ├── stat (统计变换)
+  │           ├── position (位置调整)
+  │           ├── data (图层数据)
+  │           ├── mapping (图层美学映射)
+  │           ├── aes_params (固定美学参数) ← 修改文本颜色的位置
+  │           ├── geom_params (几何对象参数)
+  │           └── stat_params (统计参数)
+  │
+  ├── scales (标度系统) - 控制"数据如何映射到视觉属性"
+  │     └── scales (标度列表)
+  │           ├── scale_x_continuous() / scale_x_discrete()
+  │           ├── scale_y_continuous() / scale_y_discrete()
+  │           ├── scale_color_manual() / scale_color_continuous()
+  │           ├── scale_fill_*()
+  │           ├── scale_size_*()
+  │           └── ...
+  │
+  ├── coords (坐标系统)
+  │     ├── coord_cartesian() (默认)
+  │     ├── coord_flip()
+  │     ├── coord_polar()
+  │     └── ...
+  │
+  ├── facet (分面系统)
+  │     ├── facet_wrap()
+  │     ├── facet_grid()
+  │     └── ...
+  │
+  ├── theme (主题系统) - 控制"非数据元素的样式"
+  │     ├── line (线条元素)
+  │     │     ├── axis.line
+  │     │     ├── axis.line.x
+  │     │     ├── axis.line.y
+  │     │     └── ...
+  │     ├── rect (矩形元素)
+  │     │     ├── panel.background
+  │     │     ├── panel.border ← 边框位置
+  │     │     ├── plot.background
+  │     │     └── ...
+  │     ├── text (文本元素)
+  │     │     ├── axis.text
+  │     │     ├── axis.title
+  │     │     ├── plot.title
+  │     │     └── ...
+  │     ├── unit (单位元素)
+  │     │     ├── plot.margin
+  │     │     ├── panel.spacing
+  │     │     └── ...
+  │     └── ...
+  │
+  └── labels (标签系统) - 控制"文本标签"
+        ├── title (主标题)
+        ├── subtitle (副标题)
+        ├── x (x轴标签)
+        ├── y (y轴标签)
+        ├── caption (图注)
+        ├── color/colour (图例标题)
+        └── ...
